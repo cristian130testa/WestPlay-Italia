@@ -1,0 +1,45 @@
+# WestPlay Italia: compila l'installer per Windows a ogni modifica del ramo "italia".
+# Il risultato si scarica dalla scheda Actions → ultima esecuzione → Artifacts → "WestPlay-Italia-installer".
+name: Compila WestPlay Italia
+
+on:
+  push:
+    branches: [italia]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Pacchetti npm
+        run: npm ci
+
+      - name: Test interfaccia
+        run: npm test --prefix ui
+
+      - name: Plugin del gioco e strumenti (Rust)
+        run: cargo build --release --workspace
+
+      - name: Installer (Tauri)
+        run: npx --no-install tauri build --config app/tauri.release.conf.json --config app/tauri.italia.conf.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WestPlay-Italia-installer
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
