@@ -6,7 +6,7 @@
 
 use std::sync::atomic::Ordering;
 
-use westplay_shared::{FRAME_KEY, SCREEN_HEIGHT, SCREEN_WIDTH, frame_texture_name};
+use westplay_shared::{FRAME_KEY, PHONE_HEIGHT, PHONE_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH, frame_texture_name, phone_texture_name};
 use windows::Win32::Foundation::E_INVALIDARG;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_SHADER_RESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11Device1,
@@ -27,6 +27,15 @@ pub struct FrameSource {
     local: Option<ID3D11Texture2D>,
     last_sequence: u64,
     has_frame: bool,
+    /// WestPlay Italia: la fonte dello schermo del telefono (la sua texture condivisa), non di quello del camion.
+    telefono: bool,
+}
+
+impl FrameSource {
+    /// WestPlay Italia: i fotogrammi dello schermo del telefono.
+    pub fn telefono() -> Self {
+        Self { telefono: true, ..Self::default() }
+    }
 }
 
 impl FrameSource {
@@ -49,7 +58,8 @@ impl FrameSource {
                 return None;
             }
 
-            let generation = host.frame_generation.load(Ordering::Acquire);
+            let generation =
+                if self.telefono { host.phone_generation.load(Ordering::Acquire) } else { host.frame_generation.load(Ordering::Acquire) };
             if generation == 0 {
                 return None;
             }
@@ -59,7 +69,8 @@ impl FrameSource {
 
             let (shared, mutex) = self.shared.as_ref()?;
             let local = self.local.as_ref()?;
-            let sequence = host.frame_seq.load(Ordering::Acquire);
+            let sequence =
+                if self.telefono { host.phone_seq.load(Ordering::Acquire) } else { host.frame_seq.load(Ordering::Acquire) };
             if sequence != self.last_sequence {
                 // Zero timeout: never stall the game's render thread. `AcquireSync` reports a timeout as a
                 // success code, so compare the raw HRESULT.
@@ -99,14 +110,16 @@ impl FrameSource {
         // is refused unless it's the frame the screens are made for.
         unsafe {
             let device1: ID3D11Device1 = device.cast()?;
-            let name = HSTRING::from(frame_texture_name(generation));
+            let name =
+                HSTRING::from(if self.telefono { phone_texture_name(generation) } else { frame_texture_name(generation) });
             let shared: ID3D11Texture2D =
                 device1.OpenSharedResourceByName(&name, (DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE).0)?;
             let mutex: IDXGIKeyedMutex = shared.cast()?;
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             shared.GetDesc(&mut desc);
             // The screens copy it whole, into the game's own textures: only the frame they're made for.
-            if let Err(problem) = frame_fits(desc.Width, desc.Height, desc.Format, desc.SampleDesc.Count) {
+            let (largo, alto) = if self.telefono { (PHONE_WIDTH, PHONE_HEIGHT) } else { (SCREEN_WIDTH, SCREEN_HEIGHT) };
+            if let Err(problem) = frame_fits_size(desc.Width, desc.Height, desc.Format, desc.SampleDesc.Count, largo, alto) {
                 return Err(windows::core::Error::new(E_INVALIDARG, format!("refused: {problem}")));
             }
 
@@ -137,9 +150,22 @@ impl FrameSource {
 /// Whether a shared texture is a frame the screens can take ([`SCREEN_WIDTH`] x [`SCREEN_HEIGHT`], one
 /// sample, B8G8R8A8 as the app makes them), or what's wrong with it: the screens copy it whole into the
 /// game's screen textures, and a copy between textures that don't match is undefined in the game's driver.
+#[cfg(test)]
 fn frame_fits(width: u32, height: u32, format: DXGI_FORMAT, samples: u32) -> Result<(), String> {
-    if (width, height) != (SCREEN_WIDTH, SCREEN_HEIGHT) {
-        return Err(format!("{width} x {height}, not {SCREEN_WIDTH} x {SCREEN_HEIGHT}"));
+    frame_fits_size(width, height, format, samples, SCREEN_WIDTH, SCREEN_HEIGHT)
+}
+
+/// [`frame_fits`] for a frame of `want_width` x `want_height` (the truck's screen's, or the phone's).
+fn frame_fits_size(
+    width: u32,
+    height: u32,
+    format: DXGI_FORMAT,
+    samples: u32,
+    want_width: u32,
+    want_height: u32,
+) -> Result<(), String> {
+    if (width, height) != (want_width, want_height) {
+        return Err(format!("{width} x {height}, not {want_width} x {want_height}"));
     }
     if format != DXGI_FORMAT_B8G8R8A8_UNORM {
         return Err(format!("format {}, not B8G8R8A8", format.0));

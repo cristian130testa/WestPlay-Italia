@@ -102,6 +102,8 @@ export default defineConfig({
       input: {
         companion: resolve(import.meta.dirname, 'index.html'),
         cabin: resolve(import.meta.dirname, 'cabin.html'),
+        // WestPlay Italia: lo schermo del telefono in mano.
+        phone: resolve(import.meta.dirname, 'phone.html'),
       },
     },
   },

@@ -30,7 +30,7 @@ pub fn bridge_name() -> String {
     format!("Local\\WestPlay.Bridge.v{BRIDGE_VERSION}")
 }
 pub const BRIDGE_MAGIC: u32 = u32::from_le_bytes(*b"WPB7");
-pub const BRIDGE_VERSION: u32 = 30;
+pub const BRIDGE_VERSION: u32 = 31;
 
 /// Size of the app's frames, and the base size of the screen textures in the mod (`westplay_setup::game_mod`
 /// builds them from these).
@@ -346,6 +346,16 @@ pub fn frame_texture_name(generation: u32) -> String {
     format!("Local\\WestPlay.Frame.v8.{generation}")
 }
 
+/// WestPlay Italia: lo schermo del telefono in mano, una seconda pagina di WestPlay catturata come quella del camion
+/// e messa in una texture condivisa sua, che il plugin disegna nel telefono (phone.rs). Verticale, con le
+/// proporzioni del vetro dell'iPhone 17 Pro (69,6 × 147,6 mm).
+pub const PHONE_WIDTH: u32 = 560;
+pub const PHONE_HEIGHT: u32 = 1188;
+
+pub fn phone_texture_name(generation: u32) -> String {
+    format!("Local\\WestPlay.Phone.v1.{generation}")
+}
+
 #[repr(C)]
 pub struct Bridge {
     pub magic: AtomicU32,
@@ -521,6 +531,10 @@ pub struct HostBlock {
     pub interaction_toggle: AtomicU32,
     /// Each [`Keybind`]'s key ([`keybind_value`]): 0 until the app has set them, meaning none.
     pub keybinds: [AtomicU32; KEYBIND_COUNT],
+    /// WestPlay Italia: la texture condivisa dello schermo del telefono ([`phone_texture_name`]); 0 senza.
+    pub phone_generation: AtomicU32,
+    /// Cresce a ogni fotogramma scritto nella texture del telefono.
+    pub phone_seq: AtomicU64,
 }
 
 /// What WestPlay does from the game by a key of the player's choosing (the app's settings).

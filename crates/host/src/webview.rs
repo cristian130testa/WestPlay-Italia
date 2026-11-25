@@ -218,9 +218,22 @@ pub struct OffscreenWebView {
     /// The worst process failure since last taken (`take_failure`).
     failure: Rc<Cell<Option<Failure>>>,
     pub version: String,
+    /// WestPlay Italia: la pagina del telefono, che riceve una copia di ogni messaggio mandato a questa
+    /// ([`OffscreenWebView::set_mirror`]): ora del gioco, telemetria, impostazioni, missione.
+    mirror: RefCell<Option<ICoreWebView2>>,
 }
 
 impl OffscreenWebView {
+    /// WestPlay Italia: ogni messaggio a questa pagina va anche a `other` (la pagina del telefono).
+    pub fn set_mirror(&self, other: &OffscreenWebView) {
+        *self.mirror.borrow_mut() = Some(other.webview.clone());
+    }
+
+    /// WestPlay Italia: il visual di questa WebView da solo, per catturarla fuori dalla scena (il telefono).
+    pub fn visual(&self) -> windows::core::Result<Visual> {
+        self.root.cast()
+    }
+
     /// A WebView of `width` x `height` on `stage`'s compositor (not on the frame until [`Stage::add`]).
     pub fn new(stage: &Stage, width: u32, height: u32, user_data: &Path) -> Result<Self, Error> {
         Self::in_environment(stage, width, height, create_environment(user_data, true)?)
@@ -366,7 +379,18 @@ impl OffscreenWebView {
         // SAFETY: the handler and the token are locals for the call; WebView2 keeps its own reference to the handler.
         unsafe { webview.add_ProcessFailed(&handler, &mut token)? };
 
-        Ok(Self { environment, root, host, composition, controller, webview, page_messages, failure, version })
+        Ok(Self {
+            environment,
+            root,
+            host,
+            composition,
+            controller,
+            webview,
+            page_messages,
+            failure,
+            version,
+            mirror: RefCell::new(None),
+        })
     }
 
     /// The worst WebView2 process failure since the last call, if any.
@@ -690,8 +714,14 @@ impl OffscreenWebView {
     }
 
     pub fn post_json(&self, json: &str) -> windows::core::Result<()> {
+        let message = HSTRING::from(json);
+        // WestPlay Italia: anche alla pagina del telefono (un suo errore non conta per questa).
+        if let Some(mirror) = self.mirror.borrow().as_ref() {
+            // SAFETY: la WebView del telefono è tenuta viva dal suo riferimento; il messaggio vive per la chiamata.
+            let _ = unsafe { mirror.PostWebMessageAsJson(&message) };
+        }
         // SAFETY: the WebView is alive as long as `self`; the message lives through the call.
-        unsafe { self.webview.PostWebMessageAsJson(&HSTRING::from(json)) }
+        unsafe { self.webview.PostWebMessageAsJson(&message) }
     }
 
     /// Mouse input for the page, at `point` in page pixels (`data`: wheel delta, or which X button).

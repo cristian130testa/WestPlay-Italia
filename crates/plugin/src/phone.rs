@@ -12,7 +12,15 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Instant;
 
 use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCompile};
-use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, ID3DBlob};
+use windows::Win32::Graphics::Direct3D::{D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, D3D_SRV_DIMENSION_TEXTURE2D, ID3DBlob};
+use windows::Win32::Graphics::Direct3D11::{
+    D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_SAMPLER_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC,
+    D3D11_SHADER_RESOURCE_VIEW_DESC_0, D3D11_TEX2D_SRV, D3D11_TEXTURE_ADDRESS_CLAMP, ID3D11SamplerState,
+    ID3D11ShaderResourceView,
+};
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_CONSTANT_BUFFER, D3D11_BLEND_DESC, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD,
     D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CULL_NONE, D3D11_FILL_SOLID, D3D11_RASTERIZER_DESC,
@@ -25,6 +33,7 @@ use windows::core::{Interface, PCSTR, s};
 
 use westplay_shared::Keybind;
 
+use crate::frame::FrameSource;
 use crate::log;
 
 /// Quanto dura la salita o la discesa (secondi).
@@ -59,6 +68,10 @@ struct Risorse {
     costanti: ID3D11Buffer,
     blend: ID3D11BlendState,
     raster: ID3D11RasterizerState,
+    campione: ID3D11SamplerState,
+    /// La pagina del telefono (la sua texture condivisa) e la vista per leggerla, con la texture di cui è.
+    fonte: FrameSource,
+    vista: Option<(usize, ID3D11ShaderResourceView)>,
 }
 
 // SAFETY: usate solo dal thread che presenta i fotogrammi del gioco, sotto il Mutex.
@@ -81,6 +94,8 @@ struct Costanti {
 
 const SHADER: &str = r#"
 cbuffer C : register(b0) { float4 rettangolo; float4 misure; float4 extra; };
+Texture2D schermoVivo : register(t0);
+SamplerState campione : register(s0);
 struct V { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 
 V vs(uint id : SV_VertexID) {
@@ -131,6 +146,10 @@ float4 ps(V i) : SV_Target {
     sfondo *= 0.75;
     float3 schermo = sfondo;
     float lato = metaSchermo.x * 2;
+    if (extra.z > 0.5) {
+        // Lo schermo vivo: la pagina del telefono di WestPlay.
+        schermo = schermoVivo.Sample(campione, saturate(s)).rgb;
+    } else {
     float icona = lato * 0.16;
     float passo = lato * 0.225;
     float2 origine = c - metaSchermo + float2(lato * 0.1 + icona * 0.5, lato * 0.42);
@@ -148,6 +167,7 @@ float4 ps(V i) : SV_Target {
     // La barra della home.
     float dBarra = scatola(p, float2(c.x, c.y + metaSchermo.y - lato * 0.025), float2(lato * 0.18, lato * 0.007), lato * 0.007);
     schermo = lerp(schermo, float3(1, 1, 1), copre(dBarra) * 0.9);
+    }
     // L'isola dinamica.
     float2 centroIsola = float2(c.x, c.y - metaSchermo.y + lato * 0.07);
     float dIsola = scatola(p, centroIsola, float2(lato * 0.16, lato * 0.046), lato * 0.046);
@@ -242,10 +262,33 @@ unsafe fn disegna(swapchain: &IDXGISwapChain, alzato: f32) -> windows::core::Res
                 }
             }
         }
-        let Some(r) = risorse.as_ref() else { return Ok(()) };
-
         let context = device.GetImmediateContext()?;
         let context1: ID3D11DeviceContext1 = context.cast()?;
+        let Some(r) = risorse.as_mut() else { return Ok(()) };
+        // Lo schermo vivo, se WestPlay lo manda (tappa 2); senza, la home di prova.
+        let srgb = matches!(desc.Format, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB | DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+        let vivo = match r.fonte.update(&device, &context) {
+            Some((texture, _)) => {
+                let chiave = texture.as_raw() as usize;
+                if r.vista.as_ref().is_none_or(|(di, _)| *di != chiave) {
+                    let mut vista: Option<ID3D11ShaderResourceView> = None;
+                    let formato =
+                        if srgb { DXGI_FORMAT_B8G8R8A8_UNORM_SRGB } else { DXGI_FORMAT_B8G8R8A8_UNORM };
+                    let srv = D3D11_SHADER_RESOURCE_VIEW_DESC {
+                        Format: formato,
+                        ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
+                        Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                            Texture2D: D3D11_TEX2D_SRV { MostDetailedMip: 0, MipLevels: 1 },
+                        },
+                    };
+                    device.CreateShaderResourceView(&texture, Some(&srv), Some(&mut vista))?;
+                    r.vista = vista.map(|v| (chiave, v));
+                }
+                r.vista.is_some()
+            }
+            None => false,
+        };
+        let r = &*r;
 
         let (w, h) = (desc.Width as f32, desc.Height as f32);
         let alto = h * ALTEZZA;
@@ -262,7 +305,7 @@ unsafe fn disegna(swapchain: &IDXGISwapChain, alzato: f32) -> windows::core::Res
         let costanti = Costanti {
             rettangolo: [ndc_x(x0), ndc_y(y0), ndc_x(x1), ndc_y(y1)],
             misure: [x1 - x0, y1 - y0, largo, ombra],
-            extra: [0.0, alzato, 0.0, 0.0],
+            extra: [0.0, alzato, if vivo { 1.0 } else { 0.0 }, 0.0],
         };
 
         let mut rtv: Option<ID3D11RenderTargetView> = None;
@@ -289,7 +332,11 @@ unsafe fn disegna(swapchain: &IDXGISwapChain, alzato: f32) -> windows::core::Res
         context1.PSSetShader(&r.ps, None);
         context1.VSSetConstantBuffers(0, Some(&[Some(r.costanti.clone())]));
         context1.PSSetConstantBuffers(0, Some(&[Some(r.costanti.clone())]));
+        context1.PSSetSamplers(0, Some(&[Some(r.campione.clone())]));
+        let vista = if vivo { r.vista.as_ref().map(|(_, v)| v.clone()) } else { None };
+        context1.PSSetShaderResources(0, Some(&[vista]));
         context1.Draw(4, 0);
+        context1.PSSetShaderResources(0, Some(&[None]));
         context1.OMSetRenderTargets(None, None);
         if let Some(gioco) = del_gioco {
             context1.SwapDeviceContextState(&gioco, None);
@@ -360,6 +407,19 @@ unsafe fn crea(device: &ID3D11Device) -> windows::core::Result<Risorse> {
             Some(&mut raster),
         )?;
 
+        let mut campione: Option<ID3D11SamplerState> = None;
+        device.CreateSamplerState(
+            &D3D11_SAMPLER_DESC {
+                Filter: D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+                AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
+                AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
+                AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,
+                MaxLOD: f32::MAX,
+                ..Default::default()
+            },
+            Some(&mut campione),
+        )?;
+
         let vuoto = windows::core::Error::empty;
         Ok(Risorse {
             device: device.as_raw() as usize,
@@ -369,6 +429,9 @@ unsafe fn crea(device: &ID3D11Device) -> windows::core::Result<Risorse> {
             costanti: costanti.ok_or_else(vuoto)?,
             blend: blend.ok_or_else(vuoto)?,
             raster: raster.ok_or_else(vuoto)?,
+            campione: campione.ok_or_else(vuoto)?,
+            fonte: FrameSource::telefono(),
+            vista: None,
         })
     }
 }

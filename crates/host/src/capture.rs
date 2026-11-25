@@ -82,10 +82,18 @@ pub struct Capture {
     light: Cell<f32>,
     drawn_light: Cell<f32>,
     dim_failed: Cell<bool>,
+    /// WestPlay Italia: la cattura della pagina del telefono (i suoi fotogrammi contati in `phone_seq`).
+    telefono: bool,
 }
 
 impl Capture {
-    pub fn start(gpu: &Gpu, visual: &Visual, shared: Arc<SharedFrame>, bridge: Arc<BridgeMapping>) -> Result<Self> {
+    pub fn start(
+        gpu: &Gpu,
+        visual: &Visual,
+        shared: Arc<SharedFrame>,
+        bridge: Arc<BridgeMapping>,
+        telefono: bool,
+    ) -> Result<Self> {
         let item = GraphicsCaptureItem::CreateFromVisual(visual)?;
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
             &gpu.winrt_device,
@@ -148,6 +156,7 @@ impl Capture {
             light: Cell::new(1.0),
             drawn_light: Cell::new(1.0),
             dim_failed: Cell::new(false),
+            telefono,
         })
     }
 
@@ -230,7 +239,12 @@ impl Capture {
 
     /// A frame went out, with `cursor` on it.
     fn sent(&self, cursor: Option<Look>, now: Instant) {
-        self.bridge.bridge().host.frame_seq.fetch_add(1, Ordering::Release);
+        let host = &self.bridge.bridge().host;
+        if self.telefono {
+            host.phone_seq.fetch_add(1, Ordering::Release);
+        } else {
+            host.frame_seq.fetch_add(1, Ordering::Release);
+        }
         self.frames.fetch_add(1, Ordering::Relaxed);
         self.drawn.set(cursor);
         self.drawn_light.set(self.light.get());

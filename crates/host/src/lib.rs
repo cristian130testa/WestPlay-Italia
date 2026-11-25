@@ -239,6 +239,8 @@ struct Pipeline {
     gpu: Gpu,
     /// Holds the shared frame texture (and its name) alive.
     capture: Capture,
+    /// WestPlay Italia: la cattura della pagina del telefono, nella sua texture condivisa (`None`: senza telefono).
+    phone: Option<Capture>,
 }
 
 /// Runs until `stop` is set. Blocks the calling thread, which becomes the WebView2 UI thread.
@@ -274,6 +276,19 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         }
     }
     startup::mark("host: cabin page requested");
+    // WestPlay Italia: la pagina del telefono in mano (phone.html), nello stesso profilo della cabina e catturata a sé
+    // (il plugin la disegna nel telefono). Riceve una copia di ogni messaggio della cabina. Senza, si va avanti.
+    let phone_view = match phone_webview(&webview, &stage, &config.content) {
+        Ok(view) => {
+            webview.set_mirror(&view);
+            log!("[telefono] pagina del telefono avviata");
+            Some(view)
+        }
+        Err(error) => {
+            log!("[telefono] pagina del telefono non avviata: {error}");
+            None
+        }
+    };
     // What WestPlay costs while the game runs, in the log each minute (performance.rs).
     let mut meter = performance::Meter::new(match &config.content {
         Content::Url(url) => performance::host_of(url).unwrap_or_default(),
@@ -486,6 +501,13 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 squeeze: page_place.rows as f32 / page_place.height.max(1) as f32,
             };
             pipeline.capture.flush(cursor.look(Instant::now()), placement);
+            // WestPlay Italia: lo schermo del telefono, intero e senza il cursore (per ora).
+            if let Some(phone) = &pipeline.phone {
+                phone.flush(None, cursor::Placement { left: 0.0, top: 0.0, squeeze: 1.0 });
+            }
+            if let Some(view) = &phone_view {
+                let _ = view.take_page_messages();
+            }
             // Dark over something light, light over something dark: as the frame shows what's under it, whatever
             // draws it (owner 2026-11-09: "it shouldn't care what lies under it, app or not").
             if let Some(light) = pipeline.capture.light_under()
@@ -622,15 +644,23 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             }
             let needs_rebuild = match &pipeline {
                 None => true,
-                Some(p) => p.capture.broken() || wanted.is_some_and(|luid| !same_luid(luid, p.gpu.luid)),
+                Some(p) => {
+                    p.capture.broken()
+                        || p.phone.as_ref().is_some_and(Capture::broken)
+                        || wanted.is_some_and(|luid| !same_luid(luid, p.gpu.luid))
+                }
             };
             if needs_rebuild {
                 host.frame_generation.store(0, Ordering::Release);
+                host.phone_generation.store(0, Ordering::Release);
                 pipeline = None;
                 generation_counter = generation_counter.wrapping_add(1);
                 let generation = ((std::process::id() & 0x00ff_ffff) << 8) | (generation_counter & 0xff);
-                match build_pipeline(&config, &stage, &bridge, wanted, generation) {
+                match build_pipeline(&config, &stage, &bridge, wanted, generation, phone_view.as_ref()) {
                     Ok(built) => {
+                        if built.phone.is_some() {
+                            host.phone_generation.store(generation, Ordering::Release);
+                        }
                         startup::mark(if wanted.is_some() {
                             "host: capturing for the game's GPU"
                         } else {
@@ -1791,6 +1821,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     }
 
     host.frame_generation.store(0, Ordering::Release);
+    host.phone_generation.store(0, Ordering::Release);
     host.screen_enabled.store(0, Ordering::Release);
     host.pid.store(0, Ordering::Release);
     drop(pipeline);
@@ -2267,11 +2298,32 @@ fn build_pipeline(
     bridge: &Arc<BridgeMapping>,
     luid: Option<LUID>,
     generation: u32,
+    phone_view: Option<&OffscreenWebView>,
 ) -> Result<Pipeline, Error> {
     let gpu = Gpu::new(luid)?;
     let shared = Arc::new(SharedFrame::new(&gpu, config.width, config.height, generation)?);
-    let capture = Capture::start(&gpu, &stage.visual()?, shared, bridge.clone())?;
-    Ok(Pipeline { gpu, capture })
+    let capture = Capture::start(&gpu, &stage.visual()?, shared, bridge.clone(), false)?;
+    // WestPlay Italia: il telefono, se c'è la sua pagina; un suo errore non ferma lo schermo del camion.
+    let phone = phone_view.and_then(|view| {
+        let started = (|| -> Result<Capture, Error> {
+            let name = windows::core::HSTRING::from(westplay_shared::phone_texture_name(generation));
+            let shared = Arc::new(SharedFrame::named(
+                &gpu,
+                westplay_shared::PHONE_WIDTH,
+                westplay_shared::PHONE_HEIGHT,
+                &name,
+            )?);
+            Ok(Capture::start(&gpu, &view.visual()?, shared, bridge.clone(), true)?)
+        })();
+        match started {
+            Ok(capture) => Some(capture),
+            Err(error) => {
+                log!("[telefono] cattura non avviata: {error}");
+                None
+            }
+        }
+    });
+    Ok(Pipeline { gpu, capture, phone })
 }
 
 /// The GPU the game renders on, once the plugin has published it.
@@ -2360,6 +2412,26 @@ const CAB_INVALID_STATE_WAIT: Duration = Duration::from_secs(3);
 /// other options, which starting again can't change while it runs; at WestPlay's start it's another process's (the
 /// WestPlay the installer closed, its browser not gone yet: a player's engine stopped there 37 ms in, and with it the
 /// maps the installation was to prepare, 2026-11-16), so it's waited out ([`CAB_TRIES_AFTER_INVALID_STATE`]).
+/// WestPlay Italia: la WebView della pagina del telefono, [`westplay_shared::PHONE_WIDTH`] x `PHONE_HEIGHT`, nell'ambiente
+/// della cabina (lo stesso profilo), con la stessa cartella dell'interfaccia.
+fn phone_webview(cab: &OffscreenWebView, stage: &Stage, content: &Content) -> Result<OffscreenWebView, Error> {
+    let view = OffscreenWebView::in_environment(
+        stage,
+        westplay_shared::PHONE_WIDTH,
+        westplay_shared::PHONE_HEIGHT,
+        cab.environment().clone(),
+    )?;
+    match content {
+        Content::Url(url) => view.navigate(&url.replace("cabin.html", "phone.html"))?,
+        Content::Html(_) => {}
+        Content::Folder { root, .. } => {
+            view.map_folder("westplay.cabin", root)?;
+            view.navigate("https://westplay.cabin/phone.html")?;
+        }
+    }
+    Ok(view)
+}
+
 fn cab_webview(stage: &Stage, width: u32, height: u32, user_data: &std::path::Path) -> Result<OffscreenWebView, Error> {
     let mut tried = 1;
     loop {
