@@ -16,20 +16,33 @@ export const SOGLIE = [2000, 500] as const
 /** Sotto questa distanza la svolta si annuncia come "adesso". */
 export const ADESSO_ENTRO = 60
 
-/** Una distanza come si dice a voce: "300 metri", "1 chilometro", "2,5 chilometri". */
+/** Una distanza come si dice a voce: "300 metri", "1 chilometro", "2,5 chilometri". I valori sono arrotondati a
+ * un insieme finito (vedi [`DISTANZE`]), così ogni frase possibile si registra in anticipo con la voce Paola. */
 export function distanzaParlata(metri: number, decimale = ','): string {
   if (metri < 975) {
     const m = metri < 100 ? Math.max(10, Math.round(metri / 10) * 10) : Math.round(metri / 50) * 50
     return `${m} metri`
   }
   const km = metri / 1000
-  if (km < 9.95) {
+  if (km < 9.75) {
     const arrotondato = Math.round(km * 2) / 2
     if (arrotondato === 1) return '1 chilometro'
     const testo = Number.isInteger(arrotondato) ? String(arrotondato) : arrotondato.toFixed(1).replace('.', decimale)
     return `${testo} chilometri`
   }
-  return `${Math.round(km)} chilometri`
+  if (km < 97.5) return `${Math.max(10, Math.round(km / 5) * 5)} chilometri`
+  return `${Math.min(500, Math.round(km / 10) * 10)} chilometri`
+}
+
+/** Tutte le distanze che [`distanzaParlata`] può dire (da 60 metri in su: sotto si dice solo l'istruzione). */
+export function DISTANZE(): number[] {
+  const metri: number[] = []
+  for (let m = 60; m < 100; m += 10) metri.push(m)
+  for (let m = 100; m <= 950; m += 50) metri.push(m)
+  for (let km = 1; km <= 9.5; km += 0.5) metri.push(km * 1000)
+  for (let km = 10; km <= 95; km += 5) metri.push(km * 1000)
+  for (let km = 100; km <= 500; km += 10) metri.push(km * 1000)
+  return metri
 }
 
 /** Cosa dice un passo: "svolta a destra", "alla rotonda, prendi la seconda uscita". */
@@ -111,3 +124,29 @@ export function limiteDaDire(limiteMs: number, mph: boolean, memoria: Memoria): 
   return `Limite di velocità ${limite}.`
 }
 
+
+/** Tutte le frasi che il navigatore può dire, per registrarle in anticipo (tools/voce). */
+export function tutteLeFrasi(text: Strings): string[] {
+  const passi: Step[] = [{ kind: 'arrive' }]
+  for (const turn of Object.keys(text.turns) as (keyof Strings['turns'])[]) {
+    passi.push({ kind: 'turn', maneuver: { node: 0, turn, angle: 0, exit: null } })
+  }
+  for (let exit = 1; exit <= 8; exit++) passi.push({ kind: 'turn', maneuver: { node: 0, turn: 'roundabout', angle: 0, exit } })
+  const frasi = new Set<string>(['Navigatore vocale attivo.'])
+  for (const passo of passi) {
+    frasi.add(frase(passo, 0, text))
+    for (const metri of DISTANZE()) frasi.add(frase(passo, metri, text))
+  }
+  for (let limite = 5; limite <= 150; limite += 5) frasi.add(`Limite di velocità ${limite}.`)
+  return [...frasi]
+}
+
+/** Il nome del file audio di una frase (FNV-1a a 32 bit, in esadecimale): lo stesso qui e in tools/voce. */
+export function fileDellaFrase(testo: string): string {
+  let h = 0x811c9dc5
+  for (const byte of new TextEncoder().encode(testo)) {
+    h ^= byte
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return `${h.toString(16).padStart(8, '0')}.ogg`
+}

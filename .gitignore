@@ -29,3 +29,6 @@ dist/
 
 # Real CarPlay photos the owner took, for reference only: Apple's UI in someone's car, never committed or shipped
 /reference/
+
+# WestPlay Italia: le frasi registrate, fatte da GitHub (tools/voce)
+/ui/public/voce/

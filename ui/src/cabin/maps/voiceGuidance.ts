@@ -12,7 +12,7 @@ import { useLive } from '../state/store'
 import { languageOf, stringsFor } from '../state/strings'
 import { googleVoiceKey } from './googleVoiceKey'
 import { guidanceOf } from './guidance'
-import { daDire, limiteDaDire, memoriaNuova } from './voiceLines'
+import { daDire, fileDellaFrase, limiteDaDire, memoriaNuova } from './voiceLines'
 
 const CHIAVE_ATTIVA = 'westplay-italia:voce'
 
@@ -142,22 +142,49 @@ function suona(base64: string): Promise<void> {
 /** Le frasi una dopo l'altra, senza sovrapporsi. */
 let coda: Promise<void> = Promise.resolve()
 
-/** Dice `testo`: con la voce Google se c'è la chiave (e la lingua è l'italiano), altrimenti con quella di Windows. */
+/** Le frasi registrate con la voce Paola (tools/voce/genera.py), in `/voce/` con l'installer: il loro elenco. */
+let registrate: Promise<Set<string>> | null = null
+
+function frasiRegistrate(): Promise<Set<string>> {
+  registrate ??= fetch('/voce/indice.json')
+    .then((risposta) => (risposta.ok ? (risposta.json() as Promise<string[]>) : []))
+    .then((files) => new Set(files))
+    .catch(() => new Set<string>())
+  return registrate
+}
+
+function suonaFile(url: string): Promise<boolean> {
+  return new Promise((fine) => {
+    const audio = new Audio(url)
+    audio.onended = () => fine(true)
+    audio.onerror = () => fine(false)
+    audio.play().catch(() => fine(false))
+  })
+}
+
+/**
+ * Dice `testo`, in quest'ordine: con la voce Google se c'è la chiave; con la voce Paola registrata se la frase è
+ * tra quelle registrate (tutte quelle del navigatore); altrimenti con la voce di Windows.
+ */
 export function parla(testo: string, locale = 'it-IT'): void {
-  const chiaveApi = googleVoiceKey()
-  if (!chiaveApi || !locale.toLowerCase().startsWith('it')) {
+  if (!locale.toLowerCase().startsWith('it')) {
     parlaWindows(testo, locale)
     return
   }
+  const chiaveApi = googleVoiceKey()
   coda = coda.then(async () => {
-    let audio: string | null = null
-    try {
-      audio = await sintesiGoogle(testo, chiaveApi)
-    } catch (errore) {
-      console.warn('[WestPlay Italia] voce Google non raggiungibile', errore)
+    if (chiaveApi) {
+      let audio: string | null = null
+      try {
+        audio = await sintesiGoogle(testo, chiaveApi)
+      } catch (errore) {
+        console.warn('[WestPlay Italia] voce Google non raggiungibile', errore)
+      }
+      if (audio) return suona(audio)
     }
-    if (audio) await suona(audio)
-    else parlaWindows(testo, locale)
+    const file = fileDellaFrase(testo)
+    if ((await frasiRegistrate()).has(file) && (await suonaFile(`/voce/${file}`))) return
+    parlaWindows(testo, locale)
   })
 }
 

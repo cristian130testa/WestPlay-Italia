@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { stringsFor } from '../state/strings'
 import type { Step } from './guidance'
-import { daDire, distanzaParlata, frase, limiteDaDire, memoriaNuova } from './voiceLines'
+import { daDire, distanzaParlata, fileDellaFrase, frase, limiteDaDire, memoriaNuova, tutteLeFrasi } from './voiceLines'
 
 const it_ = stringsFor('it_it')
 const destra: Step = { kind: 'turn', maneuver: { node: 10, turn: 'right', angle: 90, exit: null } }
@@ -15,7 +15,8 @@ describe('distanzaParlata', () => {
     expect(distanzaParlata(1000)).toBe('1 chilometro')
     expect(distanzaParlata(2400)).toBe('2,5 chilometri')
     expect(distanzaParlata(2000)).toBe('2 chilometri')
-    expect(distanzaParlata(23_400)).toBe('23 chilometri')
+    expect(distanzaParlata(23_400)).toBe('25 chilometri')
+    expect(distanzaParlata(612_000)).toBe('500 chilometri')
   })
 })
 
@@ -63,5 +64,22 @@ describe('limiteDaDire', () => {
     expect(limiteDaDire(25, false, m)).toBeNull()
     expect(limiteDaDire(13.89, false, m)).toBe('Limite di velocità 50.')
     expect(limiteDaDire(0, false, m)).toBeNull()
+  })
+})
+
+describe('tutteLeFrasi', () => {
+  it('contiene ogni frase che il navigatore può dire, così sono tutte registrate', () => {
+    const tutte = new Set(tutteLeFrasi(it_))
+    const passi: Step[] = [destra, rotonda, arrivo]
+    for (const passo of passi) {
+      for (let metri = 0; metri < 700_000; metri = metri * 1.07 + 7) {
+        expect(tutte.has(frase(passo, metri, it_)), frase(passo, metri, it_)).toBe(true)
+      }
+    }
+    expect(tutte.has('Limite di velocità 130.')).toBe(true)
+  })
+  it('dà a ogni frase un file diverso', () => {
+    const frasi = tutteLeFrasi(it_)
+    expect(new Set(frasi.map(fileDellaFrase)).size).toBe(frasi.length)
   })
 })
