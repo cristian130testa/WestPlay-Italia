@@ -115,12 +115,27 @@ export function whenTransitionEnds(next: () => void): void {
 }
 
 /**
+ * WestPlay Italia: se le View Transitions si possono usare. Non nell'anteprima dello schermo accanto alla
+ * configurazione (la pagina dentro un iframe della finestra del PC): con Microsoft Edge WebView2 158 una View
+ * Transition lì, all'apertura di un'app, fa chiudere la pagina con "STATUS_BREAKPOINT" (WestPlay 3.0 lo
+ * segnala corretto, ma il suo codice non è pubblico). Lo schermo nel camion non è in un iframe e le tiene.
+ */
+function viewTransitions(): boolean {
+  if (typeof document.startViewTransition !== 'function') return false
+  try {
+    return window.self === window.top
+  } catch {
+    return false
+  }
+}
+
+/**
  * Runs `update` (a navigation) as an animated transition. `update` must change the screen
  * synchronously. Without View Transitions support it just runs. Start it from `afterRunningTransition`, so
  * it begins from the current screen.
  */
 export function animateNavigation(launch: Launch | null, update: () => void): void {
-  if (typeof document.startViewTransition !== 'function') {
+  if (!viewTransitions()) {
     update()
     return
   }
@@ -173,7 +188,7 @@ function intoSidebar(root: HTMLElement): void {
  */
 export function animateAppearance(update: () => void): void {
   const root = document.documentElement
-  if (typeof document.startViewTransition !== 'function' || (running && root.dataset.transition !== 'appearance')) {
+  if (!viewTransitions() || (running && root.dataset.transition !== 'appearance')) {
     update()
     return
   }
