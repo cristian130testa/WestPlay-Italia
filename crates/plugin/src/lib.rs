@@ -15,6 +15,7 @@ mod keyboard;
 mod log;
 mod mod_mount;
 mod navigation;
+mod phone;
 mod screens;
 mod scs;
 mod telemetry;

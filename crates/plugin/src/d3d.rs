@@ -788,6 +788,8 @@ unsafe fn on_present(swapchain: *mut c_void) {
         if frame == 1 || frame.is_multiple_of(WINDOW_EVERY_FRAMES) {
             log_window_mode(swapchain);
         }
+        // WestPlay Italia: il telefono in mano, sopra l'immagine del gioco (phone.rs).
+        crate::phone::on_present(swapchain);
         if frame.is_multiple_of(DUMP_EVERY_FRAMES) {
             if TEXTURES_DIRTY.swap(false, Ordering::Relaxed) {
                 dump_textures();
