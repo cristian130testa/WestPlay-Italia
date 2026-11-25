@@ -14,6 +14,7 @@ import { Dashboard } from './dashboard/Dashboard'
 import { Home } from './home/Home'
 import { followTruckersMp } from './maps/truckersmp'
 import { logGuidance } from './maps/guidanceLog'
+import { avviaVoce } from './maps/voiceGuidance'
 import { routeClicksDuringTransitions } from './shell/clickThrough'
 import { installDragScroll } from './shell/dragScroll'
 import { Cursor } from './shell/Cursor'
@@ -60,6 +61,8 @@ export function CabinApp() {
   useEffect(() => meterFrames(), [])
   // The guidance shown, every 30 s with a route, for the host's log (maps/guidanceLog.ts).
   useEffect(() => logGuidance(), [])
+  // WestPlay Italia: il navigatore che parla (maps/voiceGuidance.ts).
+  useEffect(() => avviaVoce(), [])
   useEffect(() => routeClicksDuringTransitions(), [])
   // Lists follow a drag, as on a touch screen (the cab has a mouse).
   useEffect(() => installDragScroll(), [])

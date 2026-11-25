@@ -33,6 +33,7 @@ import {
   WallpaperGlyph,
 } from './glyphs'
 import { type SettingsPage, useSettings } from './settings'
+import { impostaVoce, parla, voceAttiva } from '../../maps/voiceGuidance'
 import './settings.css'
 import { cabClock, EQUALIZER_BANDS, EQUALIZER_MOST, type Equalizer, isInHost, postToHost } from '../../../shared/host'
 
@@ -559,7 +560,23 @@ function SoundPage() {
           onOpen={() => open('equalizer')}
         />
       </Group>
+      <VoiceGroup />
     </Page>
+  )
+}
+
+/** WestPlay Italia: il navigatore che parla, acceso o spento (maps/voiceGuidance.ts). */
+function VoiceGroup() {
+  const [on, setOn] = useState(voceAttiva)
+  const toggle = (value: boolean) => {
+    impostaVoce(value)
+    setOn(value)
+    if (value) parla('Navigatore vocale attivo.')
+  }
+  return (
+    <Group footer="Legge le svolte, i cambi di limite e l’arrivo con la voce italiana di Windows.">
+      <SwitchRow label="Navigatore vocale" on={on} onToggle={toggle} />
+    </Group>
   )
 }
 
