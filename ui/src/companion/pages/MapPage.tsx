@@ -6,6 +6,7 @@ import { banner, WordsContext } from '../room/room'
 import { GLOW, ON_SCREEN, useScreenAt, useTour } from '../room/screen'
 import { list, percent } from '../onboarding/words'
 import type { ProfileMap } from '../useHostStatus'
+import type { Settings } from '../useSettings'
 import { memoryNote, type PageProps, useGameCheck } from './page'
 import { type MapChoice, PrepareMapsSheet } from './PrepareMapsSheet'
 
@@ -200,6 +201,7 @@ export function MapPage(props: PageProps) {
           />
         </Group>
       )}
+      {settings && <VoceGoogle settings={settings} update={update} />}
       {(setup.games.length ? setup.games : [null]).map((game, at) => {
         const check = game ? checks[game.dir] : undefined
         // Each game's own profiles' maps (with two games, its name over them).
@@ -266,5 +268,66 @@ export function MapPage(props: PageProps) {
         />
       )}
     </Panel>
+  )
+}
+
+/** WestPlay Italia: la voce Google del navigatore, accesa o no, e la chiave "Cloud Text-to-Speech" del giocatore. */
+function VoceGoogle({ settings, update }: { settings: Settings; update(settings: Settings): Promise<void> }) {
+  const italia = settings.italia ?? { googleVoice: false, googleVoiceKey: '' }
+  const [chiave, setChiave] = useState(italia.googleVoiceKey)
+  const salva = (next: Partial<typeof italia>) => update({ ...settings, italia: { ...italia, ...next } })
+  const chiaveValida = /^AIza[\w-]{20,}$/.test(chiave.trim())
+  return (
+    <Group title="Navigatore vocale" place={4}>
+      <Row
+        title="Voce Google"
+        detail="Il navigatore parla con la sintesi vocale di Google invece che con la voce di Windows. Serve una chiave Cloud Text-to-Speech."
+        accessory={
+          <Switch
+            on={italia.googleVoice}
+            label="Voce Google"
+            disabled={!italia.googleVoiceKey}
+            change={(googleVoice) => salva({ googleVoice })}
+          />
+        }
+      />
+      <Row
+        title="Chiave API Google"
+        detail={
+          italia.googleVoiceKey
+            ? 'Chiave salvata. Le frasi già ascoltate restano sul PC e funzionano anche senza internet.'
+            : 'Incolla la chiave che comincia con AIza, poi premi Salva.'
+        }
+        wrap
+        accessory={
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="password"
+              value={chiave}
+              placeholder="AIza…"
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => setChiave(event.target.value)}
+              style={{
+                width: 220,
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(127,127,127,.4)',
+                background: 'transparent',
+                color: 'inherit',
+                font: 'inherit',
+              }}
+            />
+            <Button
+              small
+              disabled={!chiaveValida || chiave.trim() === italia.googleVoiceKey}
+              onClick={() => void salva({ googleVoiceKey: chiave.trim(), googleVoice: true })}
+            >
+              Salva
+            </Button>
+          </span>
+        }
+      />
+    </Group>
   )
 }

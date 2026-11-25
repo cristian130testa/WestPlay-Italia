@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { setGoogleVoiceKey } from '../maps/googleVoiceKey'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   type Equalizer,
@@ -558,6 +559,7 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
           mapRoads: message.roads !== false,
         })
         useLive.setState({ chosenLanguage: typeof message.language === 'string' ? message.language : null })
+        setGoogleVoiceKey(typeof message.googleVoiceKey === 'string' ? message.googleVoiceKey : '')
         setIcons({
           iconSet: message.iconSet ?? null,
           iconStyle: isIconStyle(message.iconStyle) ? message.iconStyle : 'auto',

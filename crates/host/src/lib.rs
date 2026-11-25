@@ -2327,6 +2327,8 @@ fn settings_message(settings: &settings::Settings) -> String {
         "buildings": settings.map.buildings,
         "roads": settings.map.roads,
         "language": settings.language.as_ref().map(|code| code.as_str()),
+        // WestPlay Italia: la chiave della voce Google, solo con la voce Google accesa.
+        "googleVoiceKey": if settings.italia.google_voice { settings.italia.google_voice_key.trim() } else { "" },
     })
     .to_string()
 }

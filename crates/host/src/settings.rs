@@ -39,6 +39,20 @@ pub struct Settings {
     /// game's, by its code (`tr_tr`), or `None`: the game's own (owner 2026-11-03).
     #[serde(deserialize_with = "lenient")]
     pub language: Option<LanguageCode>,
+    /// WestPlay Italia: la voce del navigatore (la sintesi vocale di Google, con la chiave del giocatore).
+    #[serde(deserialize_with = "lenient")]
+    pub italia: ItaliaSettings,
+}
+
+/// WestPlay Italia: la voce Google del navigatore. La chiave è quella "Cloud Text-to-Speech" del giocatore; senza,
+/// o con la voce Google spenta, il navigatore parla con la voce di Windows.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ItaliaSettings {
+    #[serde(deserialize_with = "lenient")]
+    pub google_voice: bool,
+    #[serde(deserialize_with = "lenient")]
+    pub google_voice_key: String,
 }
 
 /// One of the game's language codes, as its `config.cfg` writes them (`tr_tr`, `pt_br`): two letters, `_`, two.

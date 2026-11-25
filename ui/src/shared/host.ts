@@ -116,6 +116,8 @@ export type HostMessage =
       equalizerCustom?: boolean
       /** The language chosen in the companion (a game code, `de_de`); `null`: the game's. */
       language?: string | null
+      /** WestPlay Italia: la chiave della voce Google del navigatore (vuota: voce di Windows). */
+      googleVoiceKey?: string
     }
   /** The player's own wallpapers and icon sets (shared/customize.ts), their files at `CABIN_FILES`. */
   | { type: 'customize'; wallpapers: CustomWallpaper[]; iconSets: IconSet[] }

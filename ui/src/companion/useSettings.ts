@@ -47,6 +47,11 @@ export interface Settings {
   }
   /** The language WestPlay speaks in the cab and here: one of the game's (`de_de`), or `null`: the game's. */
   language: string | null
+  /** WestPlay Italia: la voce Google del navigatore. Mirrors `westplay_host::settings::ItaliaSettings`. */
+  italia?: {
+    googleVoice: boolean
+    googleVoiceKey: string
+  }
 }
 
 /** Mirrors `westplay_host::settings::CoachSpeakers`: a coach plays through its driver's pair, or through every

@@ -10,6 +10,7 @@
 
 import { useLive } from '../state/store'
 import { languageOf, stringsFor } from '../state/strings'
+import { googleVoiceKey } from './googleVoiceKey'
 import { guidanceOf } from './guidance'
 import { daDire, limiteDaDire, memoriaNuova } from './voiceLines'
 
@@ -48,7 +49,77 @@ function scegliVoce(locale: string): SpeechSynthesisVoice | null {
   )
 }
 
-export function parla(testo: string, locale = 'it-IT'): void {
+/** Le voci Google italiane, dalla più naturale: se una non c'è per la chiave del giocatore, si prova la successiva. */
+const VOCI_GOOGLE = ['it-IT-Neural2-A', 'it-IT-Wavenet-A', 'it-IT-Standard-A']
+const CACHE = 'westplay-italia:tts:'
+/** Le frasi già generate, in memoria (base64 MP3) e salvate nella WebView, così la stessa frase non si
+ * richiede due volte: le frasi del navigatore sono poche e sempre quelle. */
+const memoriaAudio = new Map<string, string>()
+let vociGoogle = 0
+
+function audioSalvato(testo: string): string | null {
+  const chiave = CACHE + testo
+  const inMemoria = memoriaAudio.get(chiave)
+  if (inMemoria) return inMemoria
+  try {
+    const salvato = localStorage.getItem(chiave)
+    if (salvato) memoriaAudio.set(chiave, salvato)
+    return salvato
+  } catch {
+    return null
+  }
+}
+
+function salvaAudio(testo: string, audio: string): void {
+  const chiave = CACHE + testo
+  memoriaAudio.set(chiave, audio)
+  try {
+    localStorage.setItem(chiave, audio)
+  } catch {
+    // Archivio pieno: si tolgono le frasi salvate e si riparte (restano quelle in memoria).
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith(CACHE)) localStorage.removeItem(k)
+    } catch {
+      // niente da fare
+    }
+  }
+}
+
+/** La frase con la voce Google (MP3 in base64), o `null` se non si riesce. */
+async function sintesiGoogle(testo: string, chiaveApi: string): Promise<string | null> {
+  const salvato = audioSalvato(testo)
+  if (salvato) return salvato
+  while (vociGoogle < VOCI_GOOGLE.length) {
+    const risposta = await fetch(
+      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(chiaveApi)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: { text: testo },
+          voice: { languageCode: 'it-IT', name: VOCI_GOOGLE[vociGoogle] },
+          audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
+        }),
+      },
+    )
+    if (risposta.ok) {
+      const { audioContent } = (await risposta.json()) as { audioContent?: string }
+      if (!audioContent) return null
+      salvaAudio(testo, audioContent)
+      return audioContent
+    }
+    // 400 per una voce che non c'è: la prossima; chiave sbagliata, quota finita o rete: voce di Windows.
+    if (risposta.status === 400 && vociGoogle < VOCI_GOOGLE.length - 1) {
+      vociGoogle++
+      continue
+    }
+    console.warn(`[WestPlay Italia] voce Google: errore ${risposta.status}`)
+    return null
+  }
+  return null
+}
+
+function parlaWindows(testo: string, locale: string): void {
   const sintesi = window.speechSynthesis
   if (!sintesi || typeof SpeechSynthesisUtterance === 'undefined') return
   if (!voce || !voce.lang.toLowerCase().startsWith(locale.slice(0, 2).toLowerCase())) voce = scegliVoce(locale)
@@ -57,6 +128,37 @@ export function parla(testo: string, locale = 'it-IT'): void {
   if (voce) enunciato.voice = voce
   enunciato.rate = 1
   sintesi.speak(enunciato)
+}
+
+function suona(base64: string): Promise<void> {
+  return new Promise((fine) => {
+    const audio = new Audio(`data:audio/mpeg;base64,${base64}`)
+    audio.onended = () => fine()
+    audio.onerror = () => fine()
+    audio.play().catch(() => fine())
+  })
+}
+
+/** Le frasi una dopo l'altra, senza sovrapporsi. */
+let coda: Promise<void> = Promise.resolve()
+
+/** Dice `testo`: con la voce Google se c'è la chiave (e la lingua è l'italiano), altrimenti con quella di Windows. */
+export function parla(testo: string, locale = 'it-IT'): void {
+  const chiaveApi = googleVoiceKey()
+  if (!chiaveApi || !locale.toLowerCase().startsWith('it')) {
+    parlaWindows(testo, locale)
+    return
+  }
+  coda = coda.then(async () => {
+    let audio: string | null = null
+    try {
+      audio = await sintesiGoogle(testo, chiaveApi)
+    } catch (errore) {
+      console.warn('[WestPlay Italia] voce Google non raggiungibile', errore)
+    }
+    if (audio) await suona(audio)
+    else parlaWindows(testo, locale)
+  })
 }
 
 /** Quanto spesso il narratore guarda il percorso (ms). */
