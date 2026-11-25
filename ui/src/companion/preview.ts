@@ -79,6 +79,7 @@ let settings: Settings = {
     volumeUp: { key: 0x33, withInteractionKey: true },
     brightnessDown: { key: 0x34, withInteractionKey: true },
     brightnessUp: { key: 0x35, withInteractionKey: true },
+    phone: { key: 0x2d, withInteractionKey: false },
   },
   screen: { truckStrip: 'auto' },
   look: { wallpaper: null, iconSet: null, iconStyle: 'auto' },

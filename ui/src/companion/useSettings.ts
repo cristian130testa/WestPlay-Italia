@@ -83,11 +83,19 @@ export type InteractionMode = 'hold' | 'toggle'
 
 /** Mirrors `westplay_host::settings::Keybinds`: the playing music's volume up and down, play/pause, and the
  * screen's brightness down and up. */
-export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause' | 'brightnessDown' | 'brightnessUp'
+export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause' | 'brightnessDown' | 'brightnessUp' | 'phone'
 
 /** In a row as their default keys are (1 to 5), as on a stereo: volume down, play/pause, volume up; then
  * brightness down and up. */
-export const KEYBIND_IDS: KeybindId[] = ['volumeDown', 'playPause', 'volumeUp', 'brightnessDown', 'brightnessUp']
+export const KEYBIND_IDS: KeybindId[] = [
+  'volumeDown',
+  'playPause',
+  'volumeUp',
+  'brightnessDown',
+  'brightnessUp',
+  // WestPlay Italia: il telefono in mano.
+  'phone',
+]
 
 /** Mirrors `westplay_host::settings::Binding`: a key, pressed alone or while using the screen (holding its
  * key, or toggled on). */

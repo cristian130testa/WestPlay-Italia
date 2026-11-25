@@ -68,7 +68,8 @@ pub fn on_frame() {
             continue;
         }
         // First: every frame's key state is kept, whether the press counts or not.
-        if input::newly_down(&WAS_DOWN[i], down) && in_game && counts(with_interaction_key) {
+        let conta = if keybind == Keybind::Phone { counts_phone(with_interaction_key) } else { counts(with_interaction_key) };
+        if input::newly_down(&WAS_DOWN[i], down) && in_game && conta {
             bridge.plugin.keybind_presses[i].fetch_add(1, Ordering::AcqRel);
             log!("keybind {keybind:?} pressed");
         }
@@ -127,6 +128,11 @@ fn counts(with_interaction_key: bool) -> bool {
     bridge::screen_on() && if with_interaction_key { input::interaction_active() } else { !typing::typing() }
 }
 
+/// WestPlay Italia: il telefono si prende su ogni camion, con o senza lo schermo di WestPlay: basta l'app accesa.
+fn counts_phone(with_interaction_key: bool) -> bool {
+    bridge::host_alive() && if with_interaction_key { input::interaction_active() } else { !typing::typing() }
+}
+
 /// The bound keys whose press is WestPlay's, by virtual-key code: down while their binding counted, until let
 /// go. The game is kept from all of that press, not only its going down: its release and its state as it's
 /// held too, however the binding counts meanwhile (the interaction key let go first). In ATS 1.62 Alt+1 left the
@@ -160,11 +166,15 @@ pub fn taken(key: u32) -> bool {
 fn counts_now(key: u32) -> bool {
     let Some(bridge) = bridge::get() else { return false };
     let sides = sides(key);
-    bridge.host.keybinds.iter().filter_map(|value| keybind_of(value.load(Ordering::Acquire))).any(
-        |(bound, with_interaction_key)| {
-            !is_mouse_button(bound) && sides.contains(&bound) && counts(with_interaction_key)
-        },
-    )
+    Keybind::ALL.iter().any(|keybind| {
+        let Some((bound, with_interaction_key)) = keybind_of(bridge.host.keybinds[*keybind as usize].load(Ordering::Acquire))
+        else {
+            return false;
+        };
+        let conta =
+            if *keybind == Keybind::Phone { counts_phone(with_interaction_key) } else { counts(with_interaction_key) };
+        !is_mouse_button(bound) && sides.contains(&bound) && conta
+    })
 }
 
 /// The keys `key` stands for: both sides for the generic Shift, Ctrl and Alt, else itself.

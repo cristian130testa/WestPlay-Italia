@@ -770,6 +770,10 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 // More at once than a player presses in a moment: another plugin's count (the game restarted).
                 if new <= MOST_KEYBIND_PRESSES {
                     for _ in 0..new {
+                        // WestPlay Italia: il telefono lo prende e posa il plugin; la pagina non ne sa niente.
+                        if keybind == Keybind::Phone {
+                            continue;
+                        }
                         let _ = webview.post_json(&keybind_message(keybind, held));
                     }
                 }
@@ -2111,6 +2115,7 @@ fn keybind_message(keybind: Keybind, held: bool) -> String {
         (Keybind::PlayPause, _) => "playPause",
         (Keybind::BrightnessDown, _) => "brightnessDown",
         (Keybind::BrightnessUp, _) => "brightnessUp",
+        (Keybind::Phone, _) => "phone",
     };
     serde_json::json!({ "type": "keybind", "action": action }).to_string()
 }

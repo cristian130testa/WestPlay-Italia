@@ -1,4 +1,4 @@
-//! WestPlay Italia: il telefono in mano. Premendo il tasto del telefono (per ora Ins) un iPhone 17 Pro arancione
+//! WestPlay Italia: il telefono in mano. Premendo il tasto del telefono (Ins, o quello scelto in WestPlay) un iPhone 17 Pro arancione
 //! sale dal basso sopra la visuale del gioco, come se l'autista lo prendesse in mano; ripremendolo torna giù.
 //!
 //! Tappa 1: il telefono è disegnato dal plugin stesso (cornice, vetro, isola dinamica, una home di prova), in un
@@ -8,7 +8,7 @@
 
 use std::ffi::c_void;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Instant;
 
 use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCompile};
@@ -21,13 +21,12 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11RasterizerState, ID3D11RenderTargetView, ID3D11Texture2D, ID3D11VertexShader, ID3DDeviceContextState,
 };
 use windows::Win32::Graphics::Dxgi::IDXGISwapChain;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_INSERT};
 use windows::core::{Interface, PCSTR, s};
+
+use westplay_shared::Keybind;
 
 use crate::log;
 
-/// Il tasto che prende e posa il telefono (tappa 1: fisso; poi sarà nelle impostazioni di WestPlay).
-const TASTO: i32 = VK_INSERT.0 as i32;
 /// Quanto dura la salita o la discesa (secondi).
 const DURATA: f32 = 0.28;
 /// Altezza del telefono rispetto all'immagine del gioco, e proporzioni dell'iPhone 17 Pro (71,9 × 150 mm).
@@ -40,7 +39,8 @@ const MARGINE_SOTTO: f32 = 0.05;
 const OMBRA: f32 = 0.12;
 
 static IN_MANO: AtomicBool = AtomicBool::new(false);
-static ERA_PREMUTO: AtomicBool = AtomicBool::new(false);
+/// Le pressioni del tasto del telefono già viste (keybinds.rs le conta).
+static VISTE: AtomicU32 = AtomicU32::new(0);
 
 struct Animazione {
     dal: Instant,
@@ -184,22 +184,23 @@ pub unsafe fn on_present(swapchain: *mut c_void) {
 }
 
 fn tasto() {
-    if !crate::d3d::game_shown() {
-        ERA_PREMUTO.store(false, Ordering::Relaxed);
+    // Il tasto lo sceglie il giocatore nella finestra di WestPlay (Comandi → Telefono in mano); keybinds.rs ne conta
+    // le pressioni, che qui diventano "prendi" e "posa".
+    let Some(bridge) = crate::bridge::get() else { return };
+    let contate = bridge.plugin.keybind_presses[Keybind::Phone as usize].load(Ordering::Acquire);
+    let viste = VISTE.swap(contate, Ordering::AcqRel);
+    if contate == viste || contate.wrapping_sub(viste) > 10 {
         return;
     }
-    // SAFETY: una semplice lettura dello stato di un tasto.
-    let giu = unsafe { GetAsyncKeyState(TASTO) } as u16 & 0x8000 != 0;
-    if giu && !ERA_PREMUTO.swap(true, Ordering::Relaxed) {
-        let mano = !IN_MANO.load(Ordering::Relaxed);
-        IN_MANO.store(mano, Ordering::Relaxed);
-        let ora = quanto_alzato();
-        *ANIMAZIONE.lock().unwrap_or_else(|e| e.into_inner()) =
-            Some(Animazione { dal: Instant::now(), da: ora, verso: if mano { 1.0 } else { 0.0 } });
-        log!("[telefono] {}", if mano { "in mano" } else { "posato" });
-    } else if !giu {
-        ERA_PREMUTO.store(false, Ordering::Relaxed);
+    if contate.wrapping_sub(viste) % 2 == 0 {
+        return;
     }
+    let mano = !IN_MANO.load(Ordering::Relaxed);
+    IN_MANO.store(mano, Ordering::Relaxed);
+    let ora = quanto_alzato();
+    *ANIMAZIONE.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some(Animazione { dal: Instant::now(), da: ora, verso: if mano { 1.0 } else { 0.0 } });
+    log!("[telefono] {}", if mano { "in mano" } else { "posato" });
 }
 
 /// Quanto è alzato il telefono adesso: 0 posato, 1 in mano (con la curva della salita).

@@ -282,6 +282,8 @@ pub struct Keybinds {
     pub play_pause: Binding,
     pub brightness_down: Binding,
     pub brightness_up: Binding,
+    /// WestPlay Italia: il telefono in mano.
+    pub phone: Binding,
 }
 
 impl<'de> Deserialize<'de> for Keybinds {
@@ -299,6 +301,7 @@ impl<'de> Deserialize<'de> for Keybinds {
             play_pause: binding("playPause", defaults.play_pause),
             brightness_down: binding("brightnessDown", defaults.brightness_down),
             brightness_up: binding("brightnessUp", defaults.brightness_up),
+            phone: binding("phone", defaults.phone),
         })
     }
 }
@@ -315,6 +318,8 @@ impl Default for Keybinds {
             volume_up: with_key(0x33),
             brightness_down: with_key(0x34),
             brightness_up: with_key(0x35),
+            // WestPlay Italia: Ins, da solo.
+            phone: Binding { key: KeyCode(0x2d), with_interaction_key: false },
         }
     }
 }
@@ -331,6 +336,7 @@ impl Keybinds {
                 Keybind::PlayPause => self.play_pause,
                 Keybind::BrightnessDown => self.brightness_down,
                 Keybind::BrightnessUp => self.brightness_up,
+                Keybind::Phone => self.phone,
             };
             keybind_value(binding.key.virtual_key(), binding.with_interaction_key)
         });

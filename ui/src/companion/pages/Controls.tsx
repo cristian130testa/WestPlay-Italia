@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useContext, useState } from 'react'
 import { useKeyName } from '../keys'
 import { Group, KeyChooser, Note, Panel, Row, Slider, Switch } from '../room/parts'
-import { n, useWords } from '../room/room'
+import { n, useWords, WordsContext } from '../room/room'
 import { GLOW, openAndClose, useScreenAt, useTour } from '../room/screen'
 import { type Binding, DEFAULT_KEY, KEYBIND_IDS, type KeybindId, SENSITIVITY, type Settings } from '../useSettings'
 import { KeyButton } from './KeyButton'
@@ -73,6 +73,7 @@ function Keybinds({
   w: PageProps['cw']['controls']
 }) {
   const words = useWords()
+  const { code } = useContext(WordsContext)
   const [listening, setListening] = useState<KeybindId | 'screen' | null>(null)
   const [refused, setRefused] = useState<string | null>(null)
   const screenKey = settings.interaction.key
@@ -83,6 +84,8 @@ function Keybinds({
     playPause: w.playPause,
     brightnessDown: w.brightnessDown,
     brightnessUp: w.brightnessUp,
+    // WestPlay Italia: in italiano per chi usa WestPlay in italiano, in inglese per le altre lingue.
+    phone: code.startsWith('it') ? 'Telefono in mano' : 'Phone in hand',
   }
   const listen = useCallback(
     (which: KeybindId | 'screen') => (on: boolean) => {
