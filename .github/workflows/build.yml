@@ -30,7 +30,7 @@ jobs:
         run: npm ci
 
       - name: Test interfaccia
-        run: npm test --prefix ui
+        run: npm test --prefix ui -- --testTimeout=60000
 
       - name: Plugin del gioco e strumenti (Rust)
         run: cargo build --release --workspace

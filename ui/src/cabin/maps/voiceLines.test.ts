@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { stringsFor } from '../state/strings'
 import type { Step } from './guidance'
-import { daDire, distanzaParlata, frase, limiteDaDire, memoriaNuova } from './voiceGuidance'
+import { daDire, distanzaParlata, frase, limiteDaDire, memoriaNuova } from './voiceLines'
 
 const it_ = stringsFor('it_it')
 const destra: Step = { kind: 'turn', maneuver: { node: 10, turn: 'right', angle: 90, exit: null } }
